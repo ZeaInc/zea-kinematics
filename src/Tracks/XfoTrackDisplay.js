@@ -133,16 +133,19 @@ class XfoTrackDisplay extends GeomItem {
     const trackDots = this.dotsItem.getParameter('Geometry').getValue()
 
     const timeRange = this.track.getTimeRange()
+    if (Number.isNaN(timeRange.x) || Number.isNaN(timeRange.y)) return
+
     const numSamples = Math.round((timeRange.y - timeRange.x) / 50) // Display at 50 samples per second
+    if (numSamples == 0) return
 
-    trackLines.setNumVertices(numSamples)
-    trackLines.setNumSegments(numSamples + 1)
+    trackLines.setNumVertices(numSamples + 1)
+    trackLines.setNumSegments(numSamples)
 
-    trackDots.setNumVertices(numSamples)
+    trackDots.setNumVertices(numSamples + 1)
     const linePositions = trackLines.getVertexAttribute('positions')
     const dotPositions = trackDots.getVertexAttribute('positions')
-    for (let i = 0; i < numSamples; i++) {
-      trackLines.setSegmentVertexIndices(i, i, i + 1)
+    for (let i = 0; i <= numSamples; i++) {
+      if (i < numSamples) trackLines.setSegmentVertexIndices(i, i, i + 1)
       const time = timeRange.x + (timeRange.y - timeRange.x) * (i / numSamples)
       const xfo = this.track.evaluate(time)
       linePositions.getValueRef(i).setFromOther(xfo.tr)
