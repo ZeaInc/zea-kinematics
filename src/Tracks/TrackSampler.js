@@ -43,7 +43,11 @@ class TrackSampler extends Operator {
         this.__secondaryChangeTime = time
 
         const keyAndLerp = this.track.findKeyAndLerp(time)
-        if (keyAndLerp.lerp > 0.0) {
+        if (
+          keyAndLerp.keyIndex == -1 ||
+          keyAndLerp.lerp > 0.0 ||
+          (keyAndLerp.keyIndex == this.track.getNumKeys() - 1 && this.track.getKeyTime(keyAndLerp.keyIndex) != time)
+        ) {
           this.__secondaryChange = new AddKeyChange(this.track, time, value)
           this.__currChange.secondaryChanges.push(this.__secondaryChange)
         } else {
@@ -62,11 +66,15 @@ class TrackSampler extends Operator {
    * The evaluate method.
    */
   evaluate() {
-    const time = this.getInput('Time').getValue()
     const output = this.getOutputByIndex(0)
+    if (this.track.getNumKeys() == 0) {
+      output.setClean(output.getValue())
+    } else {
+      const time = this.getInput('Time').getValue()
 
-    const xfo = this.track.evaluate(time)
-    output.setClean(xfo)
+      const xfo = this.track.evaluate(time)
+      output.setClean(xfo)
+    }
   }
 }
 
