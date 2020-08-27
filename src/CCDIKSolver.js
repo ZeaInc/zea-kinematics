@@ -23,6 +23,40 @@ const Y_AXIS = new Vec3(0, 1, 0)
 const Z_AXIS = new Vec3(0, 0, 1)
 const identityXfo = new Xfo()
 
+const generateDebugLines = (debugTree, color) => {
+  const line = new Lines()
+  const linepositions = line.getVertexAttribute('positions')
+
+  const mat = new Material('debug', 'LinesShader')
+  mat.getParameter('BaseColor').setValue(new Color(color))
+  mat.getParameter('Overlay').setValue(1)
+
+  const debugGeomItem = new GeomItem('Pointer', line, mat)
+  debugTree.addChild(debugGeomItem)
+
+  let numDebugSegments = 0
+  let numDebugPoints = 0
+
+  return {
+    addDebugSegment: (p0, p1) => {
+      const pid0 = numDebugPoints
+      const pid1 = numDebugPoints + 1
+      numDebugSegments++
+      numDebugPoints += 2
+      if (line.getNumVertices() < numDebugPoints) line.setNumVertices(numDebugPoints)
+      if (line.getNumSegments() < numDebugSegments) line.setNumSegments(numDebugSegments)
+      line.setSegmentVertexIndices(numDebugSegments - 1, pid0, pid1)
+      linepositions.getValueRef(pid0).setFromOther(p0)
+      linepositions.getValueRef(pid1).setFromOther(p1)
+    },
+    doneFrame: () => {
+      line.emit('geomDataTopologyChanged')
+      numDebugSegments = 0
+      numDebugPoints = 0
+    }
+  }
+}
+
 class IKJoint {
   constructor(index, axisId = 0, solverDebugTree) {
     this.index = index
@@ -33,29 +67,16 @@ class IKJoint {
     this.debugTree = new TreeItem('IKJoint' + index)
     solverDebugTree.addChild(this.debugTree)
 
-    this.line = new Lines()
-    this.linepositions = this.line.getVertexAttribute('positions')
-    this.numDebugSegments = 0
-    this.numDebugPoints = 0
-
-    const mat = new Material('debug', 'LinesShader')
-    mat.getParameter('BaseColor').setValue(new Color(1, 1, 0))
-    mat.getParameter('Overlay').setValue(1)
-
-    const debugGeomItem = new GeomItem('Pointer', this.line, mat)
-    this.debugTree.addChild(debugGeomItem)
+    this.debugLines = {}
+    // this.debugLines['red'] = generateDebugLines(this.debugTree, new Color(1, 0, 0))
+    // this.debugLines['yellow'] = generateDebugLines(this.debugTree, new Color(1, 1, 0))
   }
 
-  addDebugSegment(p0, p1) {
-    const pid0 = this.numDebugPoints
-    const pid1 = this.numDebugPoints + 1
-    this.numDebugSegments++
-    this.numDebugPoints += 2
-    if (this.line.getNumVertices() < this.numDebugPoints) this.line.setNumVertices(this.numDebugPoints)
-    if (this.line.getNumSegments() < this.numDebugSegments) this.line.setNumSegments(this.numDebugSegments)
-    this.line.setSegmentVertexIndices(this.numDebugSegments - 1, pid0, pid1)
-    this.linepositions.getValueRef(pid0).setFromOther(p0)
-    this.linepositions.getValueRef(pid1).setFromOther(p1)
+  addDebugSegment(color, p0, p1) {
+    if (!this.debugLines[color]) {
+      this.debugLines[color] = generateDebugLines(this.debugTree, color)
+    }
+    this.debugLines[color].addDebugSegment(p0, p1)
   }
 
   init(baseXfo, parentJoint, childJoint) {
@@ -117,16 +138,13 @@ class IKJoint {
     this.xfo.ori = parentXfo.ori.multiply(this.bindLocalXfo.ori)
     this.xfo.tr = parentXfo.tr.add(parentXfo.ori.rotateVec3(this.bindLocalXfo.tr))
 
-    this.line.emit('geomDataTopologyChanged')
-    this.numDebugSegments = 0
-    this.numDebugPoints = 0
+    for (let key in this.debugLines) this.debugLines[key].doneFrame()
   }
 
   evalBackwards(parentJoint, childJoint, isTip, targetXfo, baseXfo, jointToTip) {
     if (isTip) {
       this.xfo.tr = targetXfo.tr.clone()
       this.xfo.ori = targetXfo.ori.clone()
-
       // this.addDebugSegment(this.xfo.tr, this.xfo.tr.subtract(jointToTip))
       // const jointVec = this.xfo.ori.rotateVec3(this.forwardLocalTr)
       // jointToTip.subtractInPlace(jointVec)
@@ -140,9 +158,8 @@ class IKJoint {
         const vec1 = targetVec.subtract(childTwistVec.scale(targetVec.dot(childTwistVec)))
         this.align.setFrom2Vectors(vec0.normalize(), vec1.normalize())
         this.xfo.ori = this.align.multiply(this.xfo.ori)
-
-        this.addDebugSegment(childJoint.xfo.tr, childJoint.xfo.tr.subtract(jointToTip))
-        this.addDebugSegment(childJoint.xfo.tr, childJoint.xfo.tr.subtract(targetVec))
+        this.addDebugSegment('#FF0000', childJoint.xfo.tr, childJoint.xfo.tr.subtract(jointToTip))
+        this.addDebugSegment('#FFFF00', childJoint.xfo.tr, childJoint.xfo.tr.subtract(targetVec))
       } else {
         // const childAxis = childJoint.xfo.ori.rotateVec3(childJoint.axis)
         // const vec0 = jointToTip.subtract(jointToTip.scale(jointToTip.dot(childAxis)))
@@ -209,6 +226,7 @@ class IKJoint {
     let parentXfo
     if (isBase) {
       parentXfo = baseXfo
+      jointToTip.subtractInPlace(parentXfo.ori.rotateVec3(this.forwardLocalTr))
     } else {
       parentXfo = parentJoint.xfo
     }
@@ -219,10 +237,12 @@ class IKJoint {
     if (isTip) {
       this.xfo.ori = targetXfo.ori
     } else {
-      jointToTip.subtractInPlace(parentXfo.ori.rotateVec3(this.forwardLocalTr))
+      // jointToTip.subtractInPlace(parentXfo.ori.rotateVec3(this.forwardLocalTr))
+      const jointVec = this.xfo.ori.rotateVec3(childJoint.forwardLocalTr)
 
       const targetVec = targetXfo.tr.subtract(this.xfo.tr)
 
+      // if (isBase)
       {
         const twistVec = targetVec.normalize()
         const currjointAxis = parentXfo.ori.rotateVec3(this.axis)
@@ -231,18 +251,27 @@ class IKJoint {
         const vec1 = currjointAxis.subtract(twistVec.scale(currjointAxis.dot(twistVec)))
         this.align.setFrom2Vectors(vec0.normalize(), vec1.normalize())
         this.xfo.ori = this.align.multiply(this.xfo.ori)
+        this.addDebugSegment('#FF0000', this.xfo.tr, this.xfo.tr.add(vec0))
+        this.addDebugSegment('#FFFF00', this.xfo.tr, this.xfo.tr.add(vec1))
       }
       // {
       //   this.align.setFrom2Vectors(jointToTip.normalize(), targetVec.normalize())
       //   this.xfo.ori = this.align.multiply(this.xfo.ori)
+      //   this.addDebugSegment('#FF0000', this.xfo.tr, this.xfo.tr.add(jointToTip))
+      //   this.addDebugSegment('#FFFF00', this.xfo.tr, this.xfo.tr.add(targetVec))
       // }
       // const twist = true //this.isTwistJoint
-      // if (twist) {
+      // if (twist)
+      // {
       //   const twistVec = this.xfo.ori.rotateVec3(this.axis)
       //   const vec0 = jointToTip.subtract(twistVec.scale(jointToTip.dot(twistVec)))
       //   const vec1 = targetVec.subtract(twistVec.scale(targetVec.dot(twistVec)))
       //   this.align.setFrom2Vectors(vec0.normalize(), vec1.normalize())
       //   this.xfo.ori = this.align.multiply(this.xfo.ori)
+
+      //   this.addDebugSegment('#FF0000', this.xfo.tr, this.xfo.tr.add(jointToTip))
+      //   this.addDebugSegment('#FFFF00', this.xfo.tr, this.xfo.tr.add(targetVec))
+      // }
       // } else {
       //   const twistVec = this.xfo.ori.rotateVec3(this.axis)
       //   const vec0 = jointToTip.subtract(jointToTip.scale(jointToTip.dot(twistVec)))
@@ -282,6 +311,7 @@ class IKJoint {
 
       //   ///////////////////////////////
       // }
+      jointToTip.subtractInPlace(jointVec)
     }
 
     ///////////////////////
@@ -365,7 +395,6 @@ class IKSolver extends Operator {
       return
     }
     const targetXfo = this.getInput('Target').getValue()
-    // const rootJoint = this.__joints[0]
     const baseXfo = this.getInput('Base').isConnected() ? this.getInput('Base').getValue() : identityXfo
 
     const numJoints = this.__joints.length
@@ -389,17 +418,17 @@ class IKSolver extends Operator {
           joint.evalBackwards(parentJoint, childJoint, isTip, targetXfo, baseXfo, jointToTip)
         }
       }
-      // {
-      //   const jointToTip = tipJoint.xfo.tr.subtract(baseXfo.tr)
-      //   for (let j = 0; j < numJoints; j++) {
-      //     const joint = this.__joints[j]
-      //     const parentJoint = this.__joints[Math.max(j - 1, 0)]
-      //     const childJoint = this.__joints[Math.min(j + 1, numJoints - 1)]
-      //     const isBase = j == 0
-      //     const isTip = j > 0 && j == numJoints - 1
-      //     joint.evalForwards(parentJoint, childJoint, isBase, isTip, baseXfo, targetXfo, jointToTip)
-      //   }
-      // }
+      {
+        const jointToTip = tipJoint.xfo.tr.subtract(baseXfo.tr)
+        for (let j = 0; j < 1; j++) {
+          const joint = this.__joints[j]
+          const parentJoint = this.__joints[Math.max(j - 1, 0)]
+          const childJoint = this.__joints[Math.min(j + 1, numJoints - 1)]
+          const isBase = j == 0
+          const isTip = j > 0 && j == numJoints - 1
+          joint.evalForwards(parentJoint, childJoint, isBase, isTip, baseXfo, targetXfo, jointToTip)
+        }
+      }
     }
 
     // Now store the value to the connected Xfo parameter.
