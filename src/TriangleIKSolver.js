@@ -49,13 +49,6 @@ class TriangleIKSolver extends Operator {
     const joint0TargetDist = joint0TargetVec.length()
     const joint01Vec = joint0Xfo.ori.rotateVec3(this.joint1Offset)
 
-    joint01Vec.normalizeInPlace()
-    joint0TargetVec.normalizeInPlace()
-
-    const Joint0Axis = joint0TargetVec.cross(joint01Vec)
-    const currAngle = joint0TargetVec.angleTo(joint01Vec)
-    Joint0Axis.normalizeInPlace()
-
     // Calculate the angle using the rule of cosines.
     // cos C	= (a2 + b2 − c2)/2ab
     const a = this.joint0Length
@@ -64,6 +57,13 @@ class TriangleIKSolver extends Operator {
     const angle = Math.acos((a * a + b * b - c * c) / (2 * a * b))
 
     // console.log(currAngle, angle)
+
+    joint01Vec.normalizeInPlace()
+    joint0TargetVec.normalizeInPlace()
+
+    const Joint0Axis = joint0TargetVec.cross(joint01Vec)
+    const currAngle = joint0TargetVec.angleTo(joint01Vec)
+    Joint0Axis.normalizeInPlace()
 
     this.align.setFromAxisAndAngle(Joint0Axis, angle - currAngle)
     joint0Xfo.ori = this.align.multiply(joint0Xfo.ori)
