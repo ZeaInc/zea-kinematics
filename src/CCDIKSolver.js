@@ -11,7 +11,8 @@ import {
   GeomItem,
   TreeItem,
   Lines,
-  Color
+  Color,
+  MathFunctions
 } from '@zeainc/zea-engine'
 
 const X_AXIS = new Vec3(1, 0, 0)
@@ -55,10 +56,10 @@ const generateDebugLines = (debugTree, color) => {
 }
 
 class IKJoint {
-  constructor(index, axisId = 0, solverDebugTree) {
+  constructor(index, axisId = 0, limits, solverDebugTree) {
     this.index = index
     this.axisId = axisId
-    this.limits = [-Math.PI, Math.PI]
+    this.limits = [MathFunctions.degToRad(limits[0]), MathFunctions.degToRad(limits[1])]
     this.align = new Quat()
 
     this.debugTree = new TreeItem('IKJoint' + index)
@@ -76,6 +77,7 @@ class IKJoint {
   init(parentXfo) {
     this.xfo = this.output.getValue().clone() // until we have an IO output
     this.localXfo = parentXfo.inverse().multiply(this.xfo)
+    this.bindLocalXfo = this.localXfo.clone()
 
     switch (this.axisId) {
       case 0:
@@ -88,6 +90,11 @@ class IKJoint {
         this.axis = Z_AXIS
         break
     }
+  }
+
+  preEval(parentXfo) {
+    this.xfo.ori = parentXfo.ori.multiply(this.bindLocalXfo.ori)
+    this.xfo.tr = parentXfo.tr.add(parentXfo.ori.rotateVec3(this.bindLocalXfo.tr))
   }
 
   evalCCD(baseXfo, targetXfo, index, joints) {
@@ -124,15 +131,21 @@ class IKJoint {
 
     ///////////////////////
     // Apply angle Limits.
-
-    // const currAngle = Math.acos(this.xfo.ori.dot(parentXfo.ori))
-    // if (currAngle < this.limits[0] || currAngle > this.limits[1]) {
-    // const globalAxis = this.xfo.ori.rotateVec3(this.axis)
-    //   const deltaAngle =
-    //     currAngle < this.limits[0] ? this.limits[0] - currAngle : currAngle - this.limits[1]
-    //   this.align.setFromAxisAndAngle(globalAxis, deltaAngle)
-    //   this.xfo.ori = this.align.multiply(this.xfo.ori)
-    // }
+    {
+      const parentXfo = index > 0 ? joints[index - 1].xfo : baseXfo
+      // const currAngle = Math.acos(this.xfo.ori.dot(parentXfo.ori))
+      const deltaQuat = parentXfo.ori.inverse().multiply(this.xfo.ori)
+      let currAngle = deltaQuat.w < 1.0 ? deltaQuat.getAngle() : 0.0
+      const deltaAxis = new Vec3(deltaQuat.x, deltaQuat.y, deltaQuat.x)
+      // deltaAxis.normalizeInPlace()
+      if (deltaAxis.dot(this.axis) < 0.0) currAngle = -currAngle
+      if (currAngle < this.limits[0] || currAngle > this.limits[1]) {
+        const globalAxis = this.xfo.ori.rotateVec3(this.axis)
+        const deltaAngle = currAngle < this.limits[0] ? this.limits[0] - currAngle : this.limits[1] - currAngle
+        this.align.setFromAxisAndAngle(globalAxis, deltaAngle)
+        this.xfo.ori = this.xfo.ori.multiply(this.align)
+      }
+    }
 
     this.xfo.ori.normalizeInPlace()
 
@@ -141,12 +154,14 @@ class IKJoint {
       this.localXfo.ori.normalizeInPlace()
     }
 
-    let parentXfo = this.xfo
-    for (let i = index + 1; i < joints.length; i++) {
-      const joint = joints[i]
-      joint.xfo.ori = parentXfo.ori.multiply(joint.localXfo.ori)
-      joint.xfo.tr = parentXfo.tr.add(parentXfo.ori.rotateVec3(joint.localXfo.tr))
-      parentXfo = joint.xfo
+    {
+      let parentXfo = this.xfo
+      for (let i = index + 1; i < joints.length; i++) {
+        const joint = joints[i]
+        joint.xfo.ori = parentXfo.ori.multiply(joint.localXfo.ori)
+        joint.xfo.tr = parentXfo.tr.add(parentXfo.ori.rotateVec3(joint.localXfo.tr))
+        parentXfo = joint.xfo
+      }
     }
   }
 
@@ -167,7 +182,7 @@ class IKSolver extends Operator {
   constructor(name) {
     super(name)
 
-    this.addParameter(new NumberParameter('Iterations', 10))
+    this.addParameter(new NumberParameter('Iterations', 40))
     this.addInput(new OperatorInput('Base'))
     this.addInput(new OperatorInput('Target'))
     this.__joints = []
@@ -176,8 +191,8 @@ class IKSolver extends Operator {
     this.debugTree = new TreeItem('IKSolver-debug')
   }
 
-  addJoint(globalXfoParam, axisId = 0) {
-    const joint = new IKJoint(this.__joints.length, axisId, this.debugTree)
+  addJoint(globalXfoParam, axisId = 0, limits = [-180, 180]) {
+    const joint = new IKJoint(this.__joints.length, axisId, limits, this.debugTree)
 
     const output = this.addOutput(new OperatorOutput('Joint' + this.__joints.length))
     output.setParam(globalXfoParam)
@@ -212,6 +227,11 @@ class IKSolver extends Operator {
 
     const iterations = this.getParameter('Iterations').getValue()
     const numJoints = this.__joints.length
+
+    // for (let i = 0; i < numJoints; i++) {
+    //   const parentXfo = i > 0 ? this.__joints[i - 1].xfo : baseXfo
+    //   this.__joints[i].preEval(parentXfo)
+    // }
 
     for (let i = 0; i < iterations; i++) {
       {
