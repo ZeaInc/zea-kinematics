@@ -1,4 +1,4 @@
-import { Xfo } from '@zeainc/zea-engine'
+import { Xfo, Registry } from '@zeainc/zea-engine'
 import { BaseTrack } from './BaseTrack'
 
 class XfoTrack extends BaseTrack {
@@ -19,6 +19,17 @@ class XfoTrack extends BaseTrack {
       return value0
     }
   }
+
+  loadKeyJSON(json) {
+    const key = {
+      time: json.time,
+      value: new Xfo()
+    }
+    key.value.fromJSON(json.value)
+    return key
+  }
 }
+
+Registry.register('XfoTrack', XfoTrack)
 
 export { XfoTrack }

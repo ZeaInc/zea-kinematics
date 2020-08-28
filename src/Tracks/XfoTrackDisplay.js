@@ -27,7 +27,7 @@ class KeyDisplayOperator extends Operator {
 
     this.track = track
     this.keyIndex = keyIndex
-    this.track.on('keyValueChanged', event => {
+    this.track.on('keyChanged', event => {
       if (event.index == this.keyIndex) this.setDirty()
     })
     this.track.on('keysIndicesChanged', event => {
@@ -106,8 +106,12 @@ class XfoTrackDisplay extends GeomItem {
       this.__displayKeys()
       this.__updatePath()
     })
-    this.track.on('keyValueChanged', event => {
+    this.track.on('keyChanged', event => {
       this.__updatePath()
+    })
+    this.track.on('loaded', event => {
+      this.__updatePath()
+      this.__displayKeys()
     })
   }
 

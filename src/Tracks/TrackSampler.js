@@ -17,7 +17,7 @@ class TrackSampler extends Operator {
     this.track = track
     this.track.on('keyAdded', this.setDirty.bind(this))
     this.track.on('keyRemoved', this.setDirty.bind(this))
-    this.track.on('keyValueChanged', this.setDirty.bind(this))
+    this.track.on('keyChanged', this.setDirty.bind(this))
 
     this.addInput(new OperatorInput('Time'))
     this.addOutput(new OperatorOutput('Output', OperatorOutputMode.OP_WRITE))
