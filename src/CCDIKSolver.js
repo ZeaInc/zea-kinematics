@@ -22,6 +22,7 @@ const X_AXIS = new Vec3(1, 0, 0)
 const Y_AXIS = new Vec3(0, 1, 0)
 const Z_AXIS = new Vec3(0, 0, 1)
 const identityXfo = new Xfo()
+const identityQuat = new Quat()
 
 const generateDebugLines = (debugTree, color) => {
   const line = new Lines()
@@ -135,8 +136,8 @@ class IKJoint {
   }
 
   preEval(parentXfo) {
-    this.xfo.ori = parentXfo.ori.multiply(this.bindLocalXfo.ori)
-    this.xfo.tr = parentXfo.tr.add(parentXfo.ori.rotateVec3(this.bindLocalXfo.tr))
+    // this.xfo.ori = parentXfo.ori.multiply(this.bindLocalXfo.ori)
+    // this.xfo.tr = parentXfo.tr.add(parentXfo.ori.rotateVec3(this.bindLocalXfo.tr))
 
     for (let key in this.debugLines) this.debugLines[key].doneFrame()
   }
@@ -242,11 +243,27 @@ class IKJoint {
 
       const targetVec = targetXfo.tr.subtract(this.xfo.tr)
 
+      ///////////////////////
+      // Apply joint constraint.
+      this.align.setFrom2Vectors(this.xfo.ori.rotateVec3(this.axis), parentXfo.ori.rotateVec3(this.axis))
+      this.xfo.ori = this.align.multiply(this.xfo.ori)
+
       // if (isBase)
+      // {
+      //   const twistVec = targetVec.normalize()
+      //   const currjointAxis = parentXfo.ori.rotateVec3(this.axis)
+      //   const goaljointAxis = this.xfo.ori.rotateVec3(this.axis)
+      //   const vec0 = goaljointAxis.subtract(twistVec.scale(goaljointAxis.dot(twistVec)))
+      //   const vec1 = currjointAxis.subtract(twistVec.scale(currjointAxis.dot(twistVec)))
+      //   this.align.setFrom2Vectors(vec0.normalize(), vec1.normalize())
+      //   this.xfo.ori = this.align.multiply(this.xfo.ori)
+      //   this.addDebugSegment('#FF0000', this.xfo.tr, this.xfo.tr.add(vec0))
+      //   this.addDebugSegment('#FFFF00', this.xfo.tr, this.xfo.tr.add(vec1))
+      // }
       {
         const twistVec = targetVec.normalize()
-        const currjointAxis = parentXfo.ori.rotateVec3(this.axis)
-        const goaljointAxis = this.xfo.ori.rotateVec3(this.axis)
+        const currjointAxis = jointVec
+        const goaljointAxis = this.xfo.ori.rotateVec3(childJoint.forwardLocalTr)
         const vec0 = goaljointAxis.subtract(twistVec.scale(goaljointAxis.dot(twistVec)))
         const vec1 = currjointAxis.subtract(twistVec.scale(currjointAxis.dot(twistVec)))
         this.align.setFrom2Vectors(vec0.normalize(), vec1.normalize())
@@ -314,10 +331,69 @@ class IKJoint {
       jointToTip.subtractInPlace(jointVec)
     }
 
+    // ///////////////////////
+    // // Apply joint constraint.
+    // this.align.setFrom2Vectors(this.xfo.ori.rotateVec3(this.axis), parentXfo.ori.rotateVec3(this.axis))
+    // this.xfo.ori = this.align.multiply(this.xfo.ori)
+  }
+
+  evalCCD(baseXfo, targetXfo, index, joints) {
+    if (index == joints.length - 1) {
+      this.xfo.ori = targetXfo.ori.clone()
+    } else {
+      {
+        const targetVec = targetXfo.tr.subtract(this.xfo.tr)
+        const jointToTip = joints[joints.length - 1].xfo.tr.subtract(this.xfo.tr)
+        this.align.setFrom2Vectors(jointToTip.normalize(), targetVec.normalize())
+        this.xfo.ori = this.align.multiply(this.xfo.ori)
+        // this.addDebugSegment('#FF0000', this.xfo.tr, this.xfo.tr.add(jointToTip))
+        // this.addDebugSegment('#FFFF00', this.xfo.tr, this.xfo.tr.add(targetVec))
+      }
+    }
+
     ///////////////////////
     // Apply joint constraint.
-    this.align.setFrom2Vectors(this.xfo.ori.rotateVec3(this.axis), parentXfo.ori.rotateVec3(this.axis))
-    this.xfo.ori = this.align.multiply(this.xfo.ori)
+    if (index > 0) {
+      this.align.setFrom2Vectors(this.xfo.ori.rotateVec3(this.axis), joints[index - 1].xfo.ori.rotateVec3(this.axis))
+      const parentJoint = joints[index - 1]
+      const parentAlign = this.align.conjugate()
+      // parentJoint.xfo.ori = parentAlign.multiply(parentJoint.xfo.ori)
+      if (index == joints.length - 1) {
+        parentJoint.xfo.ori = parentAlign.multiply(parentJoint.xfo.ori)
+      } else {
+        parentJoint.xfo.ori = parentAlign.lerp(identityQuat, 0.5).multiply(parentJoint.xfo.ori)
+        this.xfo.ori = this.align.lerp(identityQuat, 0.5).multiply(this.xfo.ori)
+      }
+    } else {
+      this.align.setFrom2Vectors(this.xfo.ori.rotateVec3(this.axis), baseXfo.ori.rotateVec3(this.axis))
+      this.xfo.ori = this.align.multiply(this.xfo.ori)
+    }
+
+    ///////////////////////
+    // Apply angle Limits.
+
+    // const currAngle = Math.acos(this.xfo.ori.dot(parentXfo.ori))
+    // if (currAngle < childJoint.limits[0] || currAngle > childJoint.limits[1]) {
+    //   const deltaAngle =
+    //     currAngle < childJoint.limits[0] ? childJoint.limits[0] - currAngle : currAngle - childJoint.limits[1]
+    //   this.align.setFromAxisAndAngle(globalAxis, deltaAngle)
+    //   this.xfo.ori = this.align.multiply(this.xfo.ori)
+    // }
+
+    this.xfo.ori.normalizeInPlace()
+
+    if (index > 0) {
+      this.localXfo.ori = joints[index - 1].xfo.ori.inverse().multiply(this.xfo.ori)
+      this.localXfo.ori.normalizeInPlace()
+    }
+
+    let parentXfo = this.xfo
+    for (let i = index + 1; i < joints.length; i++) {
+      const joint = joints[i]
+      joint.xfo.ori = parentXfo.ori.multiply(joint.localXfo.ori)
+      joint.xfo.tr = parentXfo.tr.add(parentXfo.ori.rotateVec3(joint.bindLocalXfo.tr))
+      parentXfo = joint.xfo
+    }
   }
 
   setClean() {
@@ -398,9 +474,9 @@ class IKSolver extends Operator {
     const baseXfo = this.getInput('Base').isConnected() ? this.getInput('Base').getValue() : identityXfo
 
     const numJoints = this.__joints.length
-    const tipJoint = this.__joints[numJoints - 1]
+    // const tipJoint = this.__joints[numJoints - 1]
 
-    const iterations = 1 //this.getParameter('Iterations').getValue()
+    const iterations = 10 //this.getParameter('Iterations').getValue()
 
     for (let i = 0; i < numJoints; i++) {
       const parentXfo = i > 0 ? this.__joints[i - 1].xfo : baseXfo
@@ -408,25 +484,32 @@ class IKSolver extends Operator {
     }
 
     for (let i = 0; i < iterations; i++) {
+      // {
+      //   const jointToTip = tipJoint.xfo.tr.subtract(baseXfo.tr)
+      //   for (let j = numJoints - 1; j >= 0; j--) {
+      //     const joint = this.__joints[j]
+      //     const parentJoint = this.__joints[Math.max(j - 1, 0)]
+      //     const childJoint = this.__joints[Math.min(j + 1, numJoints - 1)]
+      //     const isTip = j > 0 && j == numJoints - 1
+      //     joint.evalBackwards(parentJoint, childJoint, isTip, targetXfo, baseXfo, jointToTip)
+      //   }
+      // }
+      // {
+      //   const jointToTip = tipJoint.xfo.tr.subtract(baseXfo.tr)
+      //   for (let j = 0; j < 1; j++) {
+      //     const joint = this.__joints[j]
+      //     const parentJoint = this.__joints[Math.max(j - 1, 0)]
+      //     const childJoint = this.__joints[Math.min(j + 1, numJoints - 1)]
+      //     const isBase = j == 0
+      //     const isTip = j > 0 && j == numJoints - 1
+      //     joint.evalForwards(parentJoint, childJoint, isBase, isTip, baseXfo, targetXfo, jointToTip)
+      //   }
+      // }
+
       {
-        const jointToTip = tipJoint.xfo.tr.subtract(baseXfo.tr)
         for (let j = numJoints - 1; j >= 0; j--) {
           const joint = this.__joints[j]
-          const parentJoint = this.__joints[Math.max(j - 1, 0)]
-          const childJoint = this.__joints[Math.min(j + 1, numJoints - 1)]
-          const isTip = j > 0 && j == numJoints - 1
-          joint.evalBackwards(parentJoint, childJoint, isTip, targetXfo, baseXfo, jointToTip)
-        }
-      }
-      {
-        const jointToTip = tipJoint.xfo.tr.subtract(baseXfo.tr)
-        for (let j = 0; j < 1; j++) {
-          const joint = this.__joints[j]
-          const parentJoint = this.__joints[Math.max(j - 1, 0)]
-          const childJoint = this.__joints[Math.min(j + 1, numJoints - 1)]
-          const isBase = j == 0
-          const isTip = j > 0 && j == numJoints - 1
-          joint.evalForwards(parentJoint, childJoint, isBase, isTip, baseXfo, targetXfo, jointToTip)
+          joint.evalCCD(baseXfo, targetXfo, j, this.__joints)
         }
       }
     }
