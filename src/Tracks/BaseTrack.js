@@ -4,9 +4,10 @@ import { EventEmitter, Vec2, Registry } from '@zeainc/zea-engine'
  * @extends BaseTrack
  */
 class BaseTrack extends EventEmitter {
-  constructor(name) {
+  constructor(name, owner) {
     super()
     this.name = name
+    this.owner = owner
     this.keys = []
     this.__sampleCache = {}
 
@@ -17,6 +18,18 @@ class BaseTrack extends EventEmitter {
 
   getName() {
     return this.name
+  }
+
+  getOwner() {
+    return this.owner
+  }
+
+  setOwner(owner) {
+    this.owner = owner
+  }
+
+  getPath() {
+    return [...this.owner.getPath(), name]
   }
 
   getNumKeys() {
@@ -32,6 +45,12 @@ class BaseTrack extends EventEmitter {
   }
 
   setKeyValue(index, value) {
+    this.keys[index].value = value
+    this.emit('keyChanged', { index })
+  }
+
+  setKeyTimeAndValue(index, time, value) {
+    this.keys[index].time = time
     this.keys[index].value = value
     this.emit('keyChanged', { index })
   }
@@ -195,3 +214,4 @@ class BaseTrack extends EventEmitter {
 }
 
 export { BaseTrack }
+export default BaseTrack

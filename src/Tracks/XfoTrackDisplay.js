@@ -43,6 +43,12 @@ class KeyDisplayOperator extends Operator {
         this.setDirty()
       }
     })
+    this.track.on('keyAdded', event => {
+      const { index } = event
+      if (this.keyIndex >= index) {
+        this.setDirty()
+      }
+    })
   }
 
   backPropagateValue(value) {
