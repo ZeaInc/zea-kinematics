@@ -86,7 +86,6 @@ class BaseTrack extends EventEmitter {
       }
     }
 
-    this.emit('keysIndicesChanged', { range: [index, numKeys], delta: 1 })
     this.emit('keyAdded', { index })
     return index
   }
@@ -101,8 +100,6 @@ class BaseTrack extends EventEmitter {
     //   }
     // }
     this.keys.splice(index, 1)
-    const numKeys = this.keys.length
-    this.emit('keysIndicesChanged', { range: [index, numKeys], delta: -1 })
     this.emit('keyRemoved', { index })
   }
 
