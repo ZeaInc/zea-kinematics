@@ -3,18 +3,18 @@
   "libraryName": "ZeaKinematics",
   "fileName": "zea-kinematics",
   "author": "Philip Taylor",
-  "description": "kinematics Extension for Zea Engine.",
-  "version": "1.4.0",
+  "description": "Kinematics Extension for Zea Engine.",
+  "version": "1.5.0-umd.1",
   "license": "MIT",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
-  "rawimport": "dist/index.rawimport.js",
+  "browser": "dist/index.umd.js",
   "files": [
-    "dist/*.js"
+    "dist/"
   ],
   "keywords": [
     "WebGL",
-    "es6",
+    "ES6",
     "Zea"
   ],
   "repository": {
@@ -23,13 +23,12 @@
   },
   "scripts": {
     "build": "rollup -c",
-    "build:watch": "rollup -c rollup.config.dev.js -w",
+    "build:watch": "rollup -w -c",
     "dist": "yarn publish --access=public",
     "docs": "adg --config adg.config.json",
     "docs-w": "adg -w --config=adg.config.json",
-    "prepare": "yarn build",
-    "start": "rollup -c rollup.config.dev.js -w",
-    "to-cleanup": "rm -Rf dist/ node_modules/ yarn.lock"
+    "prepare": "yarn run build",
+    "start": "yarn run build:watch"
   },
   "devDependencies": {
     "@zeainc/jsdocs2md": "^0.0.7",
@@ -46,11 +45,7 @@
     "yargs": "12.0.2"
   },
   "dependencies": {
-    "@zeainc/zea-engine": "^1.0.4",
-    "@zeainc/zea-ux": "^1.4.0",
-    "docsify": "^4.11.3"
-  },
-  "externals": {
-    "@zeainc/zea-engine": "@zeainc/zea-engine"
+    "@zeainc/zea-engine": "^2.0.0",
+    "@zeainc/zea-ux": "^2.0.0"
   }
 }
